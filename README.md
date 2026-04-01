@@ -1,94 +1,183 @@
 # OpenClaw Mission Control
 
-Local-first operator dashboard for OpenClaw. This V1 is intentionally dense, table-first, and pragmatic: it prioritizes active sessions, blocked approvals, cron health, flow controls, and incident visibility over decorative analytics.
+OpenClaw Mission Control 是一个面向重度 OpenClaw 使用者的本地优先运维控制台。
 
-The current UI ships in Chinese and is designed as an operator console rather than a generic AI dashboard.
+它不是营销页，也不是泛化 AI SaaS dashboard，而是一个偏操作台风格的 companion app：用尽量少的假设，把 OpenClaw Gateway、events、cron、approvals、session 和 CLI flow surface 聚合成一个可读、可操作、可降级的控制中心。
 
-## What ships in V1
+当前版本为 `v0.1.0`，界面以中文为主。
 
-- Overview for gateway health, session counts, mission counts, approval queue, cron state, and recent incidents
-- Mission Board with flow/session-derived task rows, status inference, filters, search, detail drawer, and cancel action
-- Session Radar with compact operator table, transcript preview drawer, send-message, and abort-run actions
-- Approval Inbox for exec and plugin approvals with approve-once, approve-always, deny, and raw payload preview
-- Cron Center with run-now action, recent runs, failing-job filtering, and history drawer
-- Event Feed with severity-tagged operational events
-- Mock mode for local UI work when OpenClaw is offline
+## 截图
 
-## Setup
+### 总览页
 
-1. Install dependencies:
+![Overview live dashboard](docs/screenshots/overview-live.png)
+
+### 任务看板
+
+![Mission board](docs/screenshots/mission-board-empty.png)
+
+更多安装与运行界面说明见 [`docs/INSTALL.md`](docs/INSTALL.md)。
+
+## V1 能做什么
+
+- 查看网关连接状态与数据源可用性
+- 查看活跃会话、运行中任务、阻塞任务、失败任务
+- 汇总待处理执行审批和插件审批
+- 查看 cron 调度、最近状态、失败计数和运行历史
+- 在 Mission Board 中查看任务型单元并尝试取消 flow
+- 在 Session Radar 中查看活跃会话、发送消息、终止当前运行
+- 在 Approval Inbox 中批准、始终批准或拒绝审批
+- 在 Event Feed 中查看统一事件流和事故流
+- 当部分 OpenClaw surface 不可用时自动降级，而不是整页崩掉
+- 当 OpenClaw 离线时进入 mock mode，便于本地开发 UI
+
+## 技术栈
+
+- Next.js 15
+- TypeScript
+- React
+- Tailwind CSS
+- Zustand
+- TanStack Query
+- WebSocket
+
+## 快速开始
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/youwenkui/openclaw-mission-control.git
+cd openclaw-mission-control
+```
+
+### 2. 安装依赖
 
 ```bash
 npm install
 ```
 
-2. Copy the environment file:
+### 3. 复制环境变量
 
 ```bash
 cp .env.example .env.local
 ```
 
-3. Adjust environment values as needed:
-
-- `OPENCLAW_GATEWAY_URL`: WebSocket URL for the running Gateway
-- `OPENCLAW_GATEWAY_TOKEN`: optional Gateway token
-- `OPENCLAW_CLI_PATH`: defaults to `openclaw`
-- `OPENCLAW_POLL_INTERVAL_MS`: snapshot polling interval
-- `OPENCLAW_ENABLE_CLI_FALLBACK`: enables `openclaw flows ...` fallback
-- `OPENCLAW_ENABLE_LOCAL_CACHE`: reserved for later local snapshot cache work
-- `OPENCLAW_MOCK_MODE`: when `true`, the UI falls back to seeded mock data if live surfaces fail
-
-4. Start the app:
+### 4. 启动开发环境
 
 ```bash
 npm run dev
 ```
 
-5. Open `http://localhost:3000`
+### 5. 打开浏览器
 
-If port `3000` is already in use, Next.js will automatically choose another local port and print it in the terminal.
+默认地址：
 
-## How data is sourced
+```text
+http://localhost:3000
+```
 
-Primary surfaces:
+如果 `3000` 被占用，Next.js 会自动切到其他端口，并在终端输出实际地址。
 
-- Gateway RPC through `openclaw gateway call ...`
-- Gateway WebSocket bridge for best-effort realtime events and subscriptions
-- CLI flow fallback through `openclaw flows list|cancel`
+## 连接真实 OpenClaw
 
-The UI never binds directly to raw payloads. Everything is normalized into:
+在 `.env.local` 中配置：
 
-- `Mission`
-- `SessionSummary`
-- `ApprovalItem`
-- `CronJob`
-- `IncidentEvent`
-- `GatewayHealth`
+```env
+OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=
+OPENCLAW_CLI_PATH=openclaw
+OPENCLAW_POLL_INTERVAL_MS=5000
+OPENCLAW_ENABLE_CLI_FALLBACK=true
+OPENCLAW_ENABLE_LOCAL_CACHE=false
+OPENCLAW_MOCK_MODE=true
+```
 
-## Heuristics
+说明：
 
-Mission status inference is intentionally explicit in `lib/openclaw/heuristics.ts`:
+- `OPENCLAW_GATEWAY_URL`: 本地 OpenClaw Gateway 地址
+- `OPENCLAW_GATEWAY_TOKEN`: 如果网关启用了 token auth，则填写
+- `OPENCLAW_CLI_PATH`: OpenClaw CLI 路径，默认 `openclaw`
+- `OPENCLAW_POLL_INTERVAL_MS`: 前端快照轮询间隔
+- `OPENCLAW_ENABLE_CLI_FALLBACK`: 是否启用 `openclaw flows ...` CLI 回退
+- `OPENCLAW_ENABLE_LOCAL_CACHE`: 为后续本地缓存预留，V1 默认不启用
+- `OPENCLAW_MOCK_MODE`: 当实时 surface 不可用时是否回退到 mock 数据
 
-- `running`: recent updates and no terminal or blocked signal
-- `blocked`: pending approval, explicit blocked state, or no progress beyond threshold
-- `failed`: terminal error surfaced
-- `completed`: explicit terminal/completed markers
-- `orphaned`: stale activity with broken or missing linkage
+## 数据面与设计原则
 
-## Graceful degradation
+V1 优先使用真实 OpenClaw integration surface：
 
-- If the Gateway RPC is down, the app can still render mock mode
-- If flows are unavailable, Mission Board still shows session-derived missions
-- If realtime WebSocket drops, polling keeps the dashboard usable
-- Every surface reports availability and staleness instead of crashing the UI
+1. Gateway RPC
+2. Gateway events / WebSocket
+3. `openclaw flows list | show | cancel`
+4. cron methods
+5. session methods
+6. exec approval methods
+7. plugin approval methods
 
-## Known limitations in V1
+同时坚持以下原则：
 
-- Gateway RPC calls currently go through the official CLI wrapper for reliability, not a fully custom raw RPC client
-- The WebSocket event bridge uses best-effort subscriptions because auth/subscription semantics may vary by runtime configuration
-- Flow parsing depends on `openclaw flows` availability; if the command is absent, Mission Board leans on sessions plus heuristics
-- Local cache is reserved for a later iteration
+- 不以 log scraping 作为主架构
+- 不把 UI 主逻辑硬绑定到内部 SQLite schema
+- 不让原始 Gateway payload 直接泄漏到组件层
+- 一个数据源挂掉时，其它区域仍然可用
 
-## Architecture note
+## 核心视图
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the data-plane, normalization, fallback, and limitations summary.
+### Overview
+
+系统健康、会话数、任务数、审批数、cron 异常与近期事故。
+
+### Mission Board
+
+主任务看板，展示 flow 或从 session 推断出的任务型单元，支持搜索、筛选、详情抽屉和取消 flow。
+
+### Session Radar
+
+紧凑会话表，展示 agent、channel、model、最近消息、最近工具调用、会话预览，并支持发送消息和中止运行。
+
+### Approval Inbox
+
+统一展示 exec approval 和 plugin approval，支持人工批准与拒绝。
+
+### Cron Center
+
+查看 schedule、最近状态、下次运行时间、连续失败数，并支持手动触发运行。
+
+### Event Feed
+
+统一展示 session message、tool、approval、cron、disconnect、shutdown、failure 等事件。
+
+## 启发式状态推断
+
+由于 OpenClaw 目前还没有完整的全局任务编排模型，V1 对任务状态做了显式启发式推断：
+
+- `running`: 最近仍有活动且未进入终态
+- `blocked`: 存在待审批、显式阻塞，或长时间无进展
+- `failed`: 已观察到终态错误
+- `completed`: 已观察到终态完成
+- `orphaned`: 任务存在，但关联活动已中断或严重陈旧
+
+对应代码见 [`lib/openclaw/heuristics.ts`](lib/openclaw/heuristics.ts)。
+
+## 容错与降级
+
+- Gateway events 掉线时，UI 自动退回 polling
+- `flows` 不可用时，Mission Board 会退回 session-derived missions
+- 某些 OpenClaw runtime 不支持 `plugin.approvals.get` 时，插件审批会标记为 unavailable，而不是拖垮整站健康状态
+- 如果 live surface 不可用且 `OPENCLAW_MOCK_MODE=true`，系统自动切到 mock mode
+
+## 已知限制
+
+- 当前 Gateway RPC 走的是官方 CLI wrapper，而不是自建原生 RPC client
+- WebSocket 订阅能力仍是 best-effort，因为不同 OpenClaw runtime 的 auth/subscribe 细节可能不同
+- `flows` 能力取决于你当前 OpenClaw 版本；若 runtime 不支持，控制台会退回 session 推断
+- 本地 SQLite 缓存/历史仍是后续版本工作
+
+## 文档
+
+- 安装说明：[`docs/INSTALL.md`](docs/INSTALL.md)
+- 架构说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
+## 开源许可
+
+本项目使用 [`MIT License`](LICENSE)。
